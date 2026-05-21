@@ -2,11 +2,17 @@
   "name": "speedjam",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Web multiplayer 3D racer",
   "scripts": {
-    "start": "node server.js"
+    "start": "node lan_server.js",
+    "dev:wan": "partykit dev",
+    "deploy:wan": "partykit deploy"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "partykit": "^0.0.111"
   }
 }

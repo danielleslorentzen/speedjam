@@ -1,0 +1,28 @@
+name: Deploy
+
+# Frontend (public/) auto-deploys via Cloudflare Pages' git integration.
+# This workflow deploys the PartyKit backend on every push to main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wan_server.ts"
+      - "game/**"
+      - "partykit.json"
+      - "package.json"
+      - ".github/workflows/deploy.yml"
+
+jobs:
+  deploy-wan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npx partykit deploy
+        env:
+          # Generate with `npx partykit token generate` and store as repo secrets.
+          PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
+          PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}

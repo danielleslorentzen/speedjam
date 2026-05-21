@@ -133,8 +133,16 @@ let phaseEnd = 0;        // performance.now()-based deadline for countdown/round
 let goUntil = 0;         // show "GO!" until this time
 let standings = [];      // [{ id, place }]
 
+// Server endpoint. Precedence: ?server= override → DEPLOYED_HOST → page origin.
+// For Cloudflare Pages / itch.io builds, set DEPLOYED_HOST to the PartyKit host
+// (e.g. 'speedjam.<user>.partykit.dev'). Empty string uses the page's own origin,
+// which is what LAN play against lan_server.js wants.
+const DEPLOYED_HOST = '';
+const params = new URLSearchParams(location.search);
+const SERVER_HOST = params.get('server') || DEPLOYED_HOST || location.host;
+const ROOM = params.get('room') || 'main';
 const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${wsProto}//${location.host}`);
+const ws = new WebSocket(`${wsProto}//${SERVER_HOST}/parties/main/${ROOM}`);
 let connected = false;
 
 function placeAtStart(starts) {
