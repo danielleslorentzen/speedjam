@@ -204,6 +204,20 @@ const keys = Object.create(null);
 addEventListener('keydown', e => { keys[e.key] = true; });
 addEventListener('keyup', e => { keys[e.key] = false; });
 
+function bindTouchButton(id, key) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const press = (e) => { e.preventDefault(); el.setPointerCapture(e.pointerId); keys[key] = true; };
+  const release = (e) => { e.preventDefault(); keys[key] = false; };
+  el.addEventListener('pointerdown', press);
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+bindTouchButton('btn-left', 'ArrowLeft');
+bindTouchButton('btn-right', 'ArrowRight');
+bindTouchButton('btn-boost', 'w');
+
 const hud = document.getElementById('hud');
 const msg = document.getElementById('msg');
 let finished = false;
