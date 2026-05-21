@@ -115,29 +115,85 @@ const car = makeCar(0xe53935);
 scene.add(car);
 
 const remotes = new Map();
+const colorById = new Map();
 function addRemote(p) {
   const mesh = makeCar(p.color);
   mesh.position.set(p.x, 0.4, p.z);
   scene.add(mesh);
   remotes.set(p.id, { mesh, tx: p.x, tz: p.z });
+  colorById.set(p.id, p.color);
 }
+
+// Lifecycle state (server-authoritative)
+let myId = 0;
+let phase = 'racing';
+let round = 0;
+let myInRound = false;
+let phaseEnd = 0;        // performance.now()-based deadline for countdown/roundend
+let goUntil = 0;         // show "GO!" until this time
+let standings = [];      // [{ id, place }]
 
 const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${wsProto}//${location.host}`);
 let connected = false;
 
+function placeAtStart(starts) {
+  for (const [pid, sx] of Object.entries(starts)) {
+    const idNum = Number(pid);
+    if (idNum === myId) {
+      car.position.set(sx, 0.4, 0);
+      carVelX = 0;
+    } else {
+      const r = remotes.get(idNum);
+      if (r) { r.mesh.position.set(sx, 0.4, 0); r.tx = sx; r.tz = 0; }
+    }
+  }
+}
+
+function applyPhase(m) {
+  phase = m.phase;
+  if (typeof m.round === 'number') round = m.round;
+  phaseEnd = m.duration ? performance.now() + m.duration : 0;
+
+  if (phase === 'countdown') {
+    finished = false;
+    boostMeter = 1.0;
+    standings = [];
+    myInRound = !!(m.starts && m.starts[myId] !== undefined);
+    if (m.starts) placeAtStart(m.starts);
+  } else if (phase === 'racing') {
+    goUntil = performance.now() + 700;
+  } else if (phase === 'roundend') {
+    standings = m.standings || [];
+  }
+}
+
 ws.addEventListener('open', () => { connected = true; });
 ws.addEventListener('message', (e) => {
   const m = JSON.parse(e.data);
   if (m.type === 'welcome') {
+    myId = m.id;
     car.material.color.setHex(m.color);
+    colorById.set(m.id, m.color);
     if (typeof m.x === 'number') car.position.x = m.x;
     for (const p of m.players) addRemote(p);
+    phase = m.phase;
+    round = m.round || 0;
+    myInRound = !!m.inRound;
+    phaseEnd = m.phaseRemaining ? performance.now() + m.phaseRemaining : 0;
+    standings = m.standings || [];
+  } else if (m.type === 'phase') {
+    applyPhase(m);
+  } else if (m.type === 'finish') {
+    standings = standings.filter(s => s.id !== m.id);
+    standings.push({ id: m.id, place: m.place });
+    standings.sort((a, b) => a.place - b.place);
   } else if (m.type === 'join') {
     addRemote(m.player);
   } else if (m.type === 'leave') {
     const r = remotes.get(m.id);
     if (r) { scene.remove(r.mesh); remotes.delete(m.id); }
+    colorById.delete(m.id);
   } else if (m.type === 'state') {
     const r = remotes.get(m.id);
     if (r) { r.tx = m.x; r.tz = m.z; }
@@ -164,13 +220,71 @@ const sendInterval = 1 / SEND_HZ;
 const camPos  = new THREE.Vector3(0, 4, 9);
 const camLook = new THREE.Vector3(0, 1, -6);
 
+function colorHex(id) {
+  const c = colorById.get(id);
+  return c !== undefined ? '#' + c.toString(16).padStart(6, '0') : '#fff';
+}
+
+// Front-runner among still-racing cars (falls back to any car if all finished).
+function getLeader() {
+  const done = new Set(standings.map(s => s.id));
+  let bx = 0, bz = Infinity, found = false;
+  const consider = (id, pos) => { if (pos.z < bz) { bz = pos.z; bx = pos.x; found = true; } };
+  if (myInRound && !finished && !done.has(myId)) consider(myId, car.position);
+  for (const [pid, r] of remotes) if (!done.has(pid)) consider(pid, r.mesh.position);
+  if (!found) {
+    if (myInRound) consider(myId, car.position);
+    for (const [pid, r] of remotes) consider(pid, r.mesh.position);
+  }
+  return found ? { x: bx, z: bz } : null;
+}
+
+function renderStandings() {
+  if (standings.length === 0) return 'Round over';
+  const rows = standings.map(s => {
+    const me = s.id === myId ? ' (you)' : '';
+    return `<div style="color:${colorHex(s.id)}">#${s.place} &nbsp; P${s.id}${me}</div>`;
+  });
+  return `<div style="font-size:30px; line-height:1.4">${rows.join('')}</div>`;
+}
+
+function updateUI(now) {
+  const pct = Math.round(boostMeter * 100);
+  const filled = Math.round(boostMeter * 10);
+  const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+  const graceSecs = phaseEnd ? Math.max(0, Math.ceil((phaseEnd - now) / 1000)) : 0;
+
+  let status;
+  if (phase === 'countdown') status = myInRound ? 'Get ready!' : 'Joining next round…';
+  else if (!myInRound) status = 'Spectating — next round soon';
+  else if (finished) status = 'Finished!';
+  else if (phase === 'roundend') status = `Hurry! ${graceSecs}s left`;
+  else status = 'Arrow / A,D steer · W boost';
+  hud.textContent = `5 Seconds To Finish — Round ${round}\n${status}\nBoost: ${bar} ${pct}%`;
+
+  if (phase === 'countdown') {
+    msg.textContent = graceSecs > 0 ? String(graceSecs) : 'GO!';
+    msg.style.display = 'block';
+  } else if (phase === 'racing' && now < goUntil) {
+    msg.textContent = 'GO!';
+    msg.style.display = 'block';
+  } else if (phase === 'roundend' && (finished || !myInRound)) {
+    msg.innerHTML = renderStandings();
+    msg.style.display = 'block';
+  } else {
+    msg.style.display = 'none';
+  }
+}
+
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  const boosting = (keys['w'] || keys['W']) && boostMeter > 0;
+  const racingPhase = phase === 'racing' || phase === 'roundend';
+  const canDrive = racingPhase && myInRound && !finished;
+  const boosting = canDrive && (keys['w'] || keys['W']) && boostMeter > 0;
 
-  if (!finished) {
+  if (canDrive) {
     if (boosting) {
       boostMeter = Math.max(0, boostMeter - BOOST_DRAIN * dt);
     } else {
@@ -196,16 +310,14 @@ function frame(now) {
     car.position.x = Math.max(-half, Math.min(half, car.position.x));
     car.rotation.z = -carVelX / STEER_MAX * 0.13;
 
-    const pct = Math.round(boostMeter * 100);
-    const bar = '█'.repeat(Math.round(boostMeter * 10)) + '░'.repeat(10 - Math.round(boostMeter * 10));
-    hud.textContent = `Arrow keys / A,D to steer   W = boost\nBoost: ${bar} ${pct}%`;
-
     if (car.position.z <= FINISH_Z) {
+      car.position.z = FINISH_Z;
       finished = true;
-      msg.textContent = 'Finished!';
-      msg.style.display = 'block';
+      if (connected) ws.send(JSON.stringify({ type: 'finish' }));
     }
   }
+
+  updateUI(now);
 
   // Interpolate remote cars
   for (const r of remotes.values()) {
@@ -227,11 +339,23 @@ function frame(now) {
   camera.fov = currentFov;
   camera.updateProjectionMatrix();
 
-  // Smooth camera
-  const camBack   = boosting ? 7 : 9;
-  const camHeight = boosting ? 3.2 : 4;
-  const targetPos  = new THREE.Vector3(car.position.x * 0.6, camHeight, car.position.z + camBack);
-  const targetLook = new THREE.Vector3(car.position.x, 1, car.position.z - 6);
+  // Spectators and finished players watch the leader from the front, facing back.
+  const spectating = racingPhase && (!myInRound || finished);
+  let focusX = car.position.x, focusZ = car.position.z;
+  let camBack = boosting ? 7 : 9;
+  let camHeight = boosting ? 3.2 : 4;
+  let back = 1; // 1 = behind looking forward, -1 = in front looking back
+
+  if (spectating) {
+    const leader = getLeader();
+    if (leader) {
+      focusX = leader.x; focusZ = leader.z;
+      camBack = 11; camHeight = 5; back = -1;
+    }
+  }
+
+  const targetPos  = new THREE.Vector3(focusX * 0.6, camHeight, focusZ + camBack * back);
+  const targetLook = new THREE.Vector3(focusX, 1, focusZ - 6 * back);
   camPos.lerp(targetPos,   Math.min(1, 9 * dt));
   camLook.lerp(targetLook, Math.min(1, 9 * dt));
   camera.position.copy(camPos);
