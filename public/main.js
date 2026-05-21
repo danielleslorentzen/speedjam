@@ -137,7 +137,7 @@ let standings = [];      // [{ id, place }]
 // For Cloudflare Pages / itch.io builds, set DEPLOYED_HOST to the PartyKit host
 // (e.g. 'speedjam.<user>.partykit.dev'). Empty string uses the page's own origin,
 // which is what LAN play against lan_server.js wants.
-const DEPLOYED_HOST = '';
+const DEPLOYED_HOST = 'speedjam.oakfather.partykit.dev';
 const params = new URLSearchParams(location.search);
 const SERVER_HOST = params.get('server') || DEPLOYED_HOST || location.host;
 const ROOM = params.get('room') || 'main';
