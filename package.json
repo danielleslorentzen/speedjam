@@ -1,0 +1,12 @@
+{
+  "name": "speedjam",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web multiplayer 3D racer",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
