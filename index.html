@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Speedjam</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; background: #000; }
+    #hud { position: fixed; top: 12px; left: 12px; color: #fff; font-size: 14px; opacity: 0.8; }
+    #msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 64px; font-weight: 700; text-shadow: 0 2px 8px #000; display: none; }
+  </style>
+</head>
+<body>
+  <div id="hud">Arrow keys / A,D to steer</div>
+  <div id="msg"></div>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
