@@ -2,16 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Speedjam</title>
   <style>
-    body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; background: #000; }
+    body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; background: #000; touch-action: none; -webkit-user-select: none; user-select: none; }
     #hud { position: fixed; top: 12px; left: 12px; color: #fff; font-size: 14px; opacity: 0.8; white-space: pre; line-height: 1.6; }
     #msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 64px; font-weight: 700; text-shadow: 0 2px 8px #000; display: none; }
+    #touch { display: none; position: fixed; left: 0; right: 0; bottom: 0; padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); justify-content: space-between; gap: 12px; pointer-events: none; }
+    #touch button { pointer-events: auto; flex: 0 0 auto; width: 96px; height: 96px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.35); color: #fff; font-size: 36px; font-weight: 700; -webkit-tap-highlight-color: transparent; touch-action: none; }
+    #touch button:active { background: rgba(255,255,255,0.25); }
+    #btn-boost { background: radial-gradient(circle at 50% 65%, rgba(255,200,80,0.55), rgba(229,57,53,0.55) 55%, rgba(120,20,10,0.55)); border-color: rgba(255,200,120,0.85); font-size: 44px; line-height: 1; text-shadow: 0 0 8px #ffb347, 0 0 18px #ff6b1a, 0 0 28px #d11a00; }
+    @media (pointer: coarse) { #touch { display: flex; } }
   </style>
 </head>
 <body>
   <div id="hud">Arrow keys / A,D to steer</div>
   <div id="msg"></div>
+  <div id="touch">
+    <button id="btn-left" aria-label="Steer left">◀</button>
+    <button id="btn-boost" aria-label="Boost">🔥</button>
+    <button id="btn-right" aria-label="Steer right">▶</button>
+  </div>
   <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
   </script>
