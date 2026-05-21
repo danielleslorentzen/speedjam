@@ -5,14 +5,15 @@ const TRACK_WIDTH = 20;
 const FINISH_Z = -TRACK_LENGTH;
 const SPEED = 35;
 const BOOST_SPEED = 90;
+const SEND_HZ = 20;
 
-const STEER_ACCEL = 55;   // lateral acceleration (units/s²)
-const STEER_MAX = 14;     // max lateral speed
-const STEER_FRICTION = 40; // deceleration when no input
+const STEER_ACCEL = 55;
+const STEER_MAX = 14;
+const STEER_FRICTION = 40;
 
 const FOV_NORMAL = 52;
 const FOV_BOOST  = 38;
-const FOV_EASE   = 5;     // lerp rate (higher = snappier)
+const FOV_EASE   = 5;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
@@ -40,8 +41,7 @@ const grass = new THREE.Mesh(
   new THREE.MeshStandardMaterial({ color: 0x4a8a3a })
 );
 grass.rotation.x = -Math.PI / 2;
-grass.position.z = -TRACK_LENGTH / 2;
-grass.position.y = -0.01;
+grass.position.set(0, -0.01, -TRACK_LENGTH / 2);
 scene.add(grass);
 
 const track = new THREE.Mesh(
@@ -102,12 +102,47 @@ for (let col = 0; col < TREE_COLS; col++) {
   }
 }
 
-const car = new THREE.Mesh(
-  new THREE.BoxGeometry(1.6, 0.8, 3),
-  new THREE.MeshStandardMaterial({ color: 0xe53935 })
-);
-car.position.y = 0.4;
+function makeCar(color) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 0.8, 3),
+    new THREE.MeshStandardMaterial({ color })
+  );
+  m.position.y = 0.4;
+  return m;
+}
+
+const car = makeCar(0xe53935);
 scene.add(car);
+
+const remotes = new Map();
+function addRemote(p) {
+  const mesh = makeCar(p.color);
+  mesh.position.set(p.x, 0.4, p.z);
+  scene.add(mesh);
+  remotes.set(p.id, { mesh, tx: p.x, tz: p.z });
+}
+
+const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${wsProto}//${location.host}`);
+let connected = false;
+
+ws.addEventListener('open', () => { connected = true; });
+ws.addEventListener('message', (e) => {
+  const m = JSON.parse(e.data);
+  if (m.type === 'welcome') {
+    car.material.color.setHex(m.color);
+    if (typeof m.x === 'number') car.position.x = m.x;
+    for (const p of m.players) addRemote(p);
+  } else if (m.type === 'join') {
+    addRemote(m.player);
+  } else if (m.type === 'leave') {
+    const r = remotes.get(m.id);
+    if (r) { scene.remove(r.mesh); remotes.delete(m.id); }
+  } else if (m.type === 'state') {
+    const r = remotes.get(m.id);
+    if (r) { r.tx = m.x; r.tz = m.z; }
+  }
+});
 
 const keys = Object.create(null);
 addEventListener('keydown', e => { keys[e.key] = true; });
@@ -123,6 +158,8 @@ const BOOST_REGEN = 0.15;
 
 let carVelX = 0;
 let currentFov = FOV_NORMAL;
+let sendAcc = 0;
+const sendInterval = 1 / SEND_HZ;
 
 const camPos  = new THREE.Vector3(0, 4, 9);
 const camLook = new THREE.Vector3(0, 1, -6);
@@ -170,12 +207,27 @@ function frame(now) {
     }
   }
 
-  // FOV ease-in toward target
+  // Interpolate remote cars
+  for (const r of remotes.values()) {
+    const k = Math.min(1, dt * 12);
+    r.mesh.position.x += (r.tx - r.mesh.position.x) * k;
+    r.mesh.position.z += (r.tz - r.mesh.position.z) * k;
+  }
+
+  // Network send
+  sendAcc += dt;
+  if (connected && sendAcc >= sendInterval) {
+    sendAcc = 0;
+    ws.send(JSON.stringify({ type: 'state', x: car.position.x, z: car.position.z }));
+  }
+
+  // FOV ease toward target
   const targetFov = boosting ? FOV_BOOST : FOV_NORMAL;
   currentFov += (targetFov - currentFov) * Math.min(1, FOV_EASE * dt);
   camera.fov = currentFov;
   camera.updateProjectionMatrix();
 
+  // Smooth camera
   const camBack   = boosting ? 7 : 9;
   const camHeight = boosting ? 3.2 : 4;
   const targetPos  = new THREE.Vector3(car.position.x * 0.6, camHeight, car.position.z + camBack);
